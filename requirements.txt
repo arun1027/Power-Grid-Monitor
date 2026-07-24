@@ -1,0 +1,12 @@
+Flask==3.0.3
+paho-mqtt==1.6.1
+requests==2.32.3
+boto3==1.34.144
+python-dotenv==1.0.1
+
+# --- Chart.js & Frontend Instructions ---
+# The dashboard frontend loads Chart.js dynamically from a CDN.
+# No node_modules or package.json configurations are required for the web interface.
+# The CDN link used in templates/index.html is:
+# https://cdn.jsdelivr.net/npm/chart.js
+# This ensures a lightweight, vanilla HTML/CSS/JavaScript client-side implementation.
