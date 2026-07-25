@@ -14,15 +14,15 @@ LOCAL_DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "fog_ale
 FOG_HOST = "0.0.0.0"
 FOG_PORT = 5001
 
-# Cloud Communication Settings
-# When AWS_MOCK_MODE is True, the Fog Node will write processed telemetry
-# and faults to a local database that the dashboard can read directly,
-# simulating the cloud without requiring active AWS credentials.
-AWS_MOCK_MODE = True
-
-# Production AWS Settings (active when AWS_MOCK_MODE = False)
-AWS_API_GATEWAY_URL = "https://your-api-gateway-id.execute-api.us-east-1.amazonaws.com/prod/telemetry"
+# AWS IoT Core Configuration
+AWS_IOT_ENDPOINT = "your-iot-endpoint.iot.us-east-1.amazonaws.com"
+AWS_IOT_TOPIC = "powergrid/data"
 AWS_REGION = "us-east-1"
+
+# Certificate Paths
+ROOT_CA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "AmazonRootCA1.pem"))
+DEVICE_CERT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "device-certificate.pem.crt"))
+PRIVATE_KEY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "private.pem.key"))
 
 # Rule Engine Thresholds
 RULES = {

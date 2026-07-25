@@ -85,11 +85,9 @@ def on_message(client, userdata, msg):
     
     # Determine the status based on number of faults
     if len(detected_faults) == 0:
-        status = "Healthy"
-    elif len(detected_faults) == 1:
-        status = "Warning"
+        status = "NORMAL"
     else:
-        status = "Critical"
+        status = ",".join(detected_faults)
         
     # Append status and list of faults to the processed data
     processed_data["status"] = status

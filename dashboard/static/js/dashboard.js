@@ -33,7 +33,7 @@ function formatTime(isoString) {
 
 // Helper to construct a semantic status HTML badge
 function getStatusBadge(status) {
-    if (status === "Healthy") return `<span class="badge badge-healthy"><i class="fa-solid fa-circle-check me-1"></i>Healthy</span>`;
+    if (status === "NORMAL") return `<span class="badge badge-healthy"><i class="fa-solid fa-circle-check me-1"></i>NORMAL</span>`;
     if (status === "Warning") return `<span class="badge badge-warning"><i class="fa-solid fa-triangle-exclamation me-1"></i>Warning</span>`;
     return `<span class="badge badge-critical"><i class="fa-solid fa-circle-exclamation me-1"></i>Critical</span>`;
 }
@@ -111,7 +111,7 @@ function updateOverviewData() {
             
             Object.keys(stationColors).forEach(sid => {
                 const read = status.latest_readings[sid];
-                const activeStatus = read ? read.status : "Healthy";
+                const activeStatus = read ? read.status : "NORMAL";
                 const temp = read ? `${read.temperature}°C` : "N/A";
                 const load = read ? `${read.load}%` : "N/A";
                 
@@ -238,7 +238,7 @@ function initStationDetails() {
         const ctx = document.getElementById(`station-${metric}-chart`).getContext('2d');
         
         // Define threshold plugin annotations (or draw manually via custom standard charts)
-        // To keep this readable and within student level without adding extra plugins,
+        // To keep this readable and without adding extra plugins,
         // we can add extra helper threshold data datasets as dashed lines!
         const datasets = [
             {
@@ -331,7 +331,7 @@ function updateStationDetailsData(stationId, limits) {
             const statusCard = document.getElementById("kpi-status-card");
             statusCard.className = "card card-kpi text-center border-0 shadow-sm h-100 py-2";
             
-            if (latest.status === "Healthy") {
+            if (latest.status === "NORMAL") {
                 kpiStatus.className = "h3 fw-bold text-success mb-1";
                 statusCard.classList.add("kpi-healthy-glow");
             } else if (latest.status === "Warning") {

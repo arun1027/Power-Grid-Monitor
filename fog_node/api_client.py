@@ -1,119 +1,56 @@
-# api_client.py - Sends processed telemetry and faults to Cloud
-import requests
+# api_client.py - Sends processed telemetry and faults to Cloud via AWS IoT Core
 import json
-import sqlite3
-from datetime import datetime
+import ssl
+import paho.mqtt.client as mqtt
 import config
 
-# Define mock cloud database file name
-import os
-MOCK_CLOUD_DB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "mock_cloud_data.db"))
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("[API CLIENT] Successfully connected to AWS IoT Core.")
+    else:
+        print(f"[API CLIENT ERROR] Failed to connect to AWS IoT Core, return code {rc}")
 
-def init_mock_cloud_db():
-    """Initializes the mock cloud database tables if they do not exist."""
-    conn = sqlite3.connect(MOCK_CLOUD_DB)
-    cursor = conn.cursor()
+# Initialize the MQTT client
+mqtt_client = mqtt.Client(client_id="FogNodePublisher")
+
+# Configure TLS/SSL and connect
+try:
+    mqtt_client.tls_set(
+        ca_certs=config.ROOT_CA_PATH,
+        certfile=config.DEVICE_CERT_PATH,
+        keyfile=config.PRIVATE_KEY_PATH,
+        cert_reqs=ssl.CERT_REQUIRED,
+        tls_version=ssl.PROTOCOL_TLSv1_2,
+        ciphers=None
+    )
     
-    # SensorData Table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS SensorData (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            station_id TEXT NOT NULL,
-            voltage REAL,
-            current REAL,
-            frequency REAL,
-            temperature REAL,
-            load REAL,
-            status TEXT,
-            timestamp TEXT NOT NULL
-        )
-    ''')
-    
-    # FaultLogs Table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS FaultLogs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            station_id TEXT NOT NULL,
-            faults TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    # Connect to AWS IoT Core on port 8883
+    print(f"[API CLIENT] Connecting to AWS IoT Core endpoint {config.AWS_IOT_ENDPOINT}...")
+    mqtt_client.on_connect = on_connect
+    mqtt_client.connect(config.AWS_IOT_ENDPOINT, 8883, keepalive=60)
+    mqtt_client.loop_start()  # Start the background network loop
+except Exception as e:
+    print(f"[API CLIENT ERROR] Failed to setup MQTT TLS or connect: {e}")
+    print("Please ensure your certificates exist and the paths in config.py are correct.")
 
 def send_to_cloud(processed_data):
     """
-    Forwards processed telemetry and status payload to AWS.
-    If AWS_MOCK_MODE is enabled, writes directly to local mock cloud database.
+    Publishes processed telemetry and status payload to AWS IoT Core using paho-mqtt.
     """
-    if config.AWS_MOCK_MODE:
-        return _send_to_mock_cloud(processed_data)
-    else:
-        return _send_to_aws_api_gateway(processed_data)
-
-def _send_to_mock_cloud(data):
-    """Saves data to mock cloud SQLite database simulating AWS ingest."""
     try:
-        init_mock_cloud_db()
-        conn = sqlite3.connect(MOCK_CLOUD_DB)
-        cursor = conn.cursor()
+        print(f"[API CLIENT] Publishing payload to AWS IoT Core Topic '{config.AWS_IOT_TOPIC}'...")
         
-        # Insert telemetry into SensorData
-        cursor.execute('''
-            INSERT INTO SensorData (station_id, voltage, current, frequency, temperature, load, status, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data["station_id"],
-            data["voltage"],
-            data["current"],
-            data["frequency"],
-            data["temperature"],
-            data["load"],
-            data["status"],
-            data["timestamp"]
-        ))
+        # Publish payload
+        payload_str = json.dumps(processed_data)
+        result = mqtt_client.publish(config.AWS_IOT_TOPIC, payload_str, qos=1)
         
-        # If there is a fault, log it in FaultLogs
-        if data["status"] != "Healthy":
-            # Joint faults as comma-separated string
-            fault_str = ",".join(data["faults"])
-            cursor.execute('''
-                INSERT INTO FaultLogs (station_id, faults, timestamp)
-                VALUES (?, ?, ?)
-            ''', (data["station_id"], fault_str, data["timestamp"]))
-            
-        conn.commit()
-        conn.close()
-        print(f"[API CLIENT - MOCK] Forwarded data for {data['station_id']} to mock cloud database successfully.")
-        return True
-    except Exception as e:
-        print(f"[API CLIENT - MOCK ERROR] Failed to write to mock cloud: {e}")
-        return False
-
-def _send_to_aws_api_gateway(data):
-    """Sends telemetry data payload to the live AWS API Gateway endpoint."""
-    headers = {
-        "Content-Type": "application/json",
-        # "x-api-key": "your-api-key-here"  # Uncomment if API Gateway requires an API key
-    }
-    
-    try:
-        print(f"[API CLIENT] Posting payload to AWS API Gateway: {config.AWS_API_GATEWAY_URL}...")
-        response = requests.post(
-            config.AWS_API_GATEWAY_URL, 
-            data=json.dumps(data), 
-            headers=headers,
-            timeout=10
-        )
-        
-        if response.status_code in [200, 201, 202]:
-            print(f"[API CLIENT] AWS API accepted payload. Status: {response.status_code}")
+        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+            print(f"[API CLIENT] Successfully published data for {processed_data.get('station_id')}.")
             return True
         else:
-            print(f"[API CLIENT ERROR] AWS API Gateway returned status {response.status_code}: {response.text}")
+            print(f"[API CLIENT ERROR] Publish returned error code: {result.rc}")
             return False
             
-    except requests.exceptions.RequestException as e:
-        print(f"[API CLIENT ERROR] Failed to connect to AWS API Gateway: {e}")
-        print("Tip: Enable AWS_MOCK_MODE = True in fog_node/config.py to test without live AWS.")
+    except Exception as e:
+        print(f"[API CLIENT ERROR] Exception during publish: {e}")
         return False

@@ -1,6 +1,5 @@
 # app.py - Flask Dashboard Server for National Power Grid Monitor
 from flask import Flask, render_template, jsonify, request
-import sqlite3
 import os
 import sys
 
@@ -14,81 +13,12 @@ try:
     from boto3.dynamodb.conditions import Key
 except ImportError:
     boto3 = None
+    print("WARNING: boto3 is not installed. DynamoDB features will not work.")
 
 app = Flask(__name__)
 
-# Mock database file name
-MOCK_CLOUD_DB = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "mock_cloud_data.db"))
-
-def get_sqlite_conn():
-    """Returns connection to the mock cloud SQLite database."""
-    conn = sqlite3.connect(MOCK_CLOUD_DB)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def fetch_local_telemetry(limit=10, station_id=None):
-    """Fetches sensor history from local mock cloud database."""
-    if not os.path.exists(MOCK_CLOUD_DB):
-        return []
-    try:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        if station_id:
-            cursor.execute(
-                "SELECT * FROM SensorData WHERE station_id = ? ORDER BY timestamp DESC LIMIT ?", 
-                (station_id, limit)
-            )
-        else:
-            cursor.execute(
-                "SELECT * FROM SensorData ORDER BY timestamp DESC LIMIT ?", 
-                (limit * 5,)  # Fetch enough records for all stations
-            )
-        rows = cursor.fetchall()
-        conn.close()
-        
-        # Convert sqlite Row to list of dicts
-        data = []
-        for r in rows:
-            data.append({
-                "station_id": r["station_id"],
-                "voltage": r["voltage"],
-                "current": r["current"],
-                "frequency": r["frequency"],
-                "temperature": r["temperature"],
-                "load": r["load"],
-                "status": r["status"],
-                "timestamp": r["timestamp"]
-            })
-        return data
-    except Exception as e:
-        print(f"Error querying mock DB: {e}")
-        return []
-
-def fetch_local_alerts(limit=50):
-    """Fetches fault history from local mock cloud database."""
-    if not os.path.exists(MOCK_CLOUD_DB):
-        return []
-    try:
-        conn = get_sqlite_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM FaultLogs ORDER BY timestamp DESC LIMIT ?", (limit,))
-        rows = cursor.fetchall()
-        conn.close()
-        
-        alerts = []
-        for r in rows:
-            alerts.append({
-                "station_id": r["station_id"],
-                "faults": r["faults"].split(","),
-                "timestamp": r["timestamp"]
-            })
-        return alerts
-    except Exception as e:
-        print(f"Error querying mock DB alerts: {e}")
-        return []
-
 def fetch_aws_telemetry(limit=10, station_id=None):
-    """Queries AWS DynamoDB for telemetry data (Production Mode)."""
+    """Queries AWS DynamoDB for telemetry data."""
     if boto3 is None:
         print("boto3 not installed, returning empty telemetry")
         return []
@@ -123,7 +53,7 @@ def fetch_aws_telemetry(limit=10, station_id=None):
                 "frequency": float(item.get("frequency", 0)),
                 "temperature": float(item.get("temperature", 0)),
                 "load": float(item.get("load", 0)),
-                "status": item.get("status", "Healthy"),
+                "status": item.get("status", "NORMAL"),
                 "timestamp": item["timestamp"]
             })
         return formatted_data
@@ -132,7 +62,7 @@ def fetch_aws_telemetry(limit=10, station_id=None):
         return []
 
 def fetch_aws_alerts(limit=50):
-    """Queries AWS DynamoDB for fault logs (Production Mode)."""
+    """Queries AWS DynamoDB for fault logs."""
     if boto3 is None:
         return []
     try:
@@ -153,7 +83,7 @@ def fetch_aws_alerts(limit=50):
 @app.route('/')
 def dashboard():
     """Renders main dashboard overview page."""
-    return render_template('dashboard.html', active_page='dashboard', mock_mode=config.AWS_MOCK_MODE)
+    return render_template('dashboard.html', active_page='dashboard')
 
 @app.route('/stations')
 def stations():
@@ -163,14 +93,13 @@ def stations():
         'station.html', 
         active_page='stations', 
         station_id=selected_id, 
-        all_stations=config.RULES.get('stations', ["PS001", "PS002", "PS003", "PS004", "PS005"]),
-        mock_mode=config.AWS_MOCK_MODE
+        all_stations=config.RULES.get('stations', ["PS001", "PS002", "PS003", "PS004", "PS005"])
     )
 
 @app.route('/alerts')
 def alerts():
     """Renders alert logs history page."""
-    return render_template('dashboard.html', active_page='alerts', mock_mode=config.AWS_MOCK_MODE)
+    return render_template('dashboard.html', active_page='alerts')
 
 # ====================================================
 # BACKEND JSON APIs (Called by static/js/dashboard.js)
@@ -182,11 +111,7 @@ def api_telemetry():
     station_id = request.args.get('station_id')
     limit = int(request.args.get('limit', 10))
     
-    if config.AWS_MOCK_MODE:
-        data = fetch_local_telemetry(limit, station_id)
-    else:
-        data = fetch_aws_telemetry(limit, station_id)
-        
+    data = fetch_aws_telemetry(limit, station_id)
     return jsonify(data)
 
 @app.route('/api/alerts', methods=['GET'])
@@ -194,20 +119,13 @@ def api_alerts():
     """Returns fault log array for lists/tables."""
     limit = int(request.args.get('limit', 50))
     
-    if config.AWS_MOCK_MODE:
-        data = fetch_local_alerts(limit)
-    else:
-        data = fetch_aws_alerts(limit)
-        
+    data = fetch_aws_alerts(limit)
     return jsonify(data)
 
 @app.route('/api/grid_status', methods=['GET'])
 def api_grid_status():
     """Aggregates latest status for each station to show summary counts."""
-    if config.AWS_MOCK_MODE:
-        telemetry = fetch_local_telemetry(limit=30)
-    else:
-        telemetry = fetch_aws_telemetry(limit=30)
+    telemetry = fetch_aws_telemetry(limit=30)
         
     # Get the latest reading for each station ID
     latest_readings = {}
@@ -225,11 +143,11 @@ def api_grid_status():
     for sid in ["PS001", "PS002", "PS003", "PS004", "PS005"]:
         if sid in latest_readings:
             status = latest_readings[sid]['status']
-            if status == "Healthy":
+            if status == "NORMAL":
                 healthy_count += 1
-            elif status == "Warning":
+            elif status in ["Warning", "LOW_VOLTAGE", "HIGH_VOLTAGE", "OVER_CURRENT", "UNDER_FREQUENCY", "OVERHEATING", "OVERLOAD"]:
                 warning_count += 1
-            elif status == "Critical":
+            else:
                 critical_count += 1
         else:
             # No reading yet, default to healthy or offline (let's assume healthy for display setup)
