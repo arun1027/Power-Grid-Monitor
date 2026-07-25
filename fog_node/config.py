@@ -20,9 +20,9 @@ AWS_IOT_TOPIC = "powergrid/data"
 AWS_REGION = "us-east-1"
 
 # Certificate Paths
-ROOT_CA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "AmazonRootCA1.pem"))
-DEVICE_CERT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "device-certificate.pem.crt"))
-PRIVATE_KEY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "private.pem.key"))
+ROOT_CA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "certs", "AmazonRootCA1.pem"))
+DEVICE_CERT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "certs", "device.pem.crt"))
+PRIVATE_KEY_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "certs", "private.pem.key"))
 
 # Rule Engine Thresholds
 RULES = {
