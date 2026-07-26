@@ -1,24 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>National Power Grid Monitor - Fog & Edge Computing</title>
-    
+
     <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
+
     <!-- FontAwesome for grid icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    
+
     <!-- Custom Style Sheet -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
 
     <!-- Main Navigation Bar -->
@@ -28,7 +31,9 @@
                 <i class="fa-solid fa-bolt me-2 text-warning animate-pulse"></i>
                 <span class="fw-bold tracking-tight">National Power Grid Monitor</span>
             </a>
-            <button class="navbar-dark navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-dark navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false"
+                aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
@@ -54,10 +59,12 @@
     </nav>
 
     <!-- Environment Notice -->
-    <div class="environment-badge px-4 py-2 text-center text-white {% if mock_mode %}bg-info{% else %}bg-success{% endif %}">
+    <div
+        class="environment-badge px-4 py-2 text-center text-white {% if mock_mode %}bg-info{% else %}bg-success{% endif %}">
         <small class="fw-semibold">
             <i class="fa-solid {% if mock_mode %}fa-laptop-code{% else %}fa-cloud-arrow-up{% endif %} me-1"></i>
-            Running in {% if mock_mode %}LOCAL MOCK MODE (SQLite Simulation){% else %}PRODUCTION MODE (AWS Integration Active){% endif %}
+            Running in {% if mock_mode %}LOCAL MOCK MODE (SQLite Simulation){% else %}PRODUCTION MODE (AWS Integration
+            Active){% endif %}
         </small>
     </div>
 
@@ -70,7 +77,7 @@
     <footer class="footer mt-auto py-3 bg-light text-center border-top">
         <div class="container">
             <span class="text-muted small">
-                Fog & Edge Computing MSc Project &copy; 2026. Made with <i class="fa-solid fa-heart text-danger"></i>.
+                National Power Grid <i class="fa-solid fa-heart text-danger"></i>.
             </span>
         </div>
     </footer>
@@ -78,8 +85,11 @@
     <!-- Chart.js and Custom Script -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Bootstrap JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+        crossorigin="anonymous"></script>
     <!-- Custom Dashboard Logic -->
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
+
 </html>

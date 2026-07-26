@@ -33,24 +33,69 @@ except Exception as e:
     print(f"[API CLIENT ERROR] Failed to setup MQTT TLS or connect: {e}")
     print("Please ensure your certificates exist and the paths in config.py are correct.")
 
+import boto3
+from decimal import Decimal
+
+# Initialize DynamoDB client for direct cloud persistence
+try:
+    dynamodb = boto3.resource('dynamodb', region_name=config.AWS_REGION)
+    telemetry_table = dynamodb.Table('PowerGridTelemetry')
+    fault_table = dynamodb.Table('FaultLogs')
+except Exception as err:
+    print(f"[API CLIENT WARNING] DynamoDB client init warning: {err}")
+    telemetry_table = None
+
+def _to_decimal(val):
+    if isinstance(val, (float, int)):
+        return Decimal(str(val))
+    return val
+
 def send_to_cloud(processed_data):
     """
-    Publishes processed telemetry and status payload to AWS IoT Core using paho-mqtt.
+    Publishes processed telemetry payload to AWS IoT Core via MQTT over TLS
+    AND saves record directly into DynamoDB PowerGridTelemetry for live dashboard tracking.
     """
+    success = False
+
+    # 1. Publish to AWS IoT Core MQTT Broker
     try:
-        print(f"[API CLIENT] Publishing payload to AWS IoT Core Topic '{config.AWS_IOT_TOPIC}'...")
-        
-        # Publish payload
         payload_str = json.dumps(processed_data)
         result = mqtt_client.publish(config.AWS_IOT_TOPIC, payload_str, qos=1)
-        
         if result.rc == mqtt.MQTT_ERR_SUCCESS:
-            print(f"[API CLIENT] Successfully published data for {processed_data.get('station_id')}.")
-            return True
+            print(f"[API CLIENT] Published to AWS IoT Core topic '{config.AWS_IOT_TOPIC}' for {processed_data.get('station_id')}.")
+            success = True
         else:
-            print(f"[API CLIENT ERROR] Publish returned error code: {result.rc}")
-            return False
-            
+            print(f"[API CLIENT ERROR] MQTT publish returned error code: {result.rc}")
     except Exception as e:
-        print(f"[API CLIENT ERROR] Exception during publish: {e}")
-        return False
+        print(f"[API CLIENT ERROR] Exception during MQTT publish: {e}")
+
+    # 2. Write to DynamoDB PowerGridTelemetry table for real-time dashboard streaming
+    if telemetry_table is not None:
+        try:
+            item = {
+                "station_id": processed_data.get("station_id"),
+                "timestamp": processed_data.get("timestamp"),
+                "voltage": _to_decimal(processed_data.get("voltage")),
+                "current": _to_decimal(processed_data.get("current")),
+                "frequency": _to_decimal(processed_data.get("frequency")),
+                "temperature": _to_decimal(processed_data.get("temperature")),
+                "load": _to_decimal(processed_data.get("load")),
+                "status": processed_data.get("status", "NORMAL")
+            }
+            telemetry_table.put_item(Item=item)
+            
+            # Log faults if status is non-NORMAL
+            if processed_data.get("status") != "NORMAL":
+                fault_item = {
+                    "station_id": processed_data.get("station_id"),
+                    "timestamp": processed_data.get("timestamp"),
+                    "faults": processed_data.get("faults", [])
+                }
+                fault_table.put_item(Item=fault_item)
+                
+            print(f"[API CLIENT -> DYNAMODB] Saved live reading for {processed_data.get('station_id')} into PowerGridTelemetry.")
+            success = True
+        except Exception as e:
+            print(f"[API CLIENT -> DYNAMODB ERROR] Failed writing to DynamoDB: {e}")
+
+    return success

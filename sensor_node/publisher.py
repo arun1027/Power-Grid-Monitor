@@ -57,7 +57,7 @@ def run_publisher():
                 client.publish(config.MQTT_TOPIC, payload)
                 
                 status_msg = " [FAULT INJECTED]" if inject_fault else ""
-                print(f"Published telemetry for {station_id} -> Voltage: {telemetry['voltage']}V, Load: {telemetry['load']}%{status_msg}")
+                print(f"Published telemetry for {station_id} -> V: {telemetry['voltage']}V | I: {telemetry['current']}A | Freq: {telemetry['frequency']}Hz | Temp: {telemetry['temperature']}°C | Load: {telemetry['load']}%{status_msg}")
             
             # Wait for the next interval
             time.sleep(config.PUBLISH_INTERVAL)

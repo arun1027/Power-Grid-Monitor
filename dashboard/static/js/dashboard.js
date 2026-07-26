@@ -130,20 +130,21 @@ function updateOverviewData() {
         .catch(err => console.error("Error fetching grid status summary:", err));
 
     // B. Fetch Telemetry History and Redraw Charts
-    fetch('/api/telemetry?limit=8')
+    fetch('/api/telemetry?limit=50')
         .then(response => response.json())
         .then(telemetryData => {
-            // Organize telemetry records by station and sorted chronologically
-            // API returns latest first (descending). We reverse to plot left-to-right (chronological)
-            const chronologicalData = telemetryData.reverse();
+            // Reverse array so records are in chronological order (oldest to newest)
+            const chronologicalData = [...telemetryData].reverse();
             
+            // Group records by station ID
             const grouped = {};
             Object.keys(stationColors).forEach(sid => {
-                grouped[sid] = chronologicalData.filter(d => d.station_id === sid);
+                grouped[sid] = chronologicalData.filter(d => d.station_id === sid).slice(-10);
             });
 
-            // Extract union of timestamps to use as X-axis labels
-            const uniqueTimestamps = [...new Set(chronologicalData.map(d => formatTime(d.timestamp)))].slice(-10);
+            // Find the station with the most timestamps to use as X-axis labels
+            let maxStation = Object.keys(grouped).reduce((a, b) => grouped[a].length >= grouped[b].length ? a : b, "PS001");
+            const timeLabels = (grouped[maxStation] || []).map(r => formatTime(r.timestamp));
 
             const metrics = ["voltage", "current", "frequency", "temperature", "load"];
             
@@ -151,21 +152,16 @@ function updateOverviewData() {
                 const chart = charts[metric];
                 if (!chart) return;
                 
-                chart.data.labels = uniqueTimestamps;
+                chart.data.labels = timeLabels;
                 
                 // Update datasets for each station
                 chart.data.datasets.forEach(dataset => {
                     const stationId = dataset.label;
                     const stationRecords = grouped[stationId] || [];
-                    
-                    // Align telemetry values with the timestamp labels
-                    dataset.data = uniqueTimestamps.map(timeLabel => {
-                        const match = stationRecords.find(r => formatTime(r.timestamp) === timeLabel);
-                        return match ? match[metric] : null;
-                    });
+                    dataset.data = stationRecords.map(r => r[metric]);
                 });
                 
-                chart.update('none'); // Update without full transitions for performance
+                chart.update('none'); // Update without full transitions for smooth performance
             });
         })
         .catch(err => console.error("Error fetching telemetry logs:", err));
