@@ -1,166 +1,171 @@
 # app.py - Flask Dashboard Server for National Power Grid Monitor
+# Reads directly from AWS DynamoDB PowerGridTelemetry table
 from flask import Flask, render_template, jsonify, request
+import boto3
+from boto3.dynamodb.conditions import Key
+from decimal import Decimal
 import os
-import sys
-
-# Add parent directory and fog_node to path to share configurations
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import fog_node.config as config
-
-# Import AWS boto3 for production mode
-try:
-    import boto3
-    from boto3.dynamodb.conditions import Key
-except ImportError:
-    boto3 = None
-    print("WARNING: boto3 is not installed. DynamoDB features will not work.")
 
 app = Flask(__name__)
 
-def fetch_aws_telemetry(limit=10, station_id=None):
-    """Queries AWS DynamoDB for telemetry data."""
-    if boto3 is None:
-        print("boto3 not installed, returning empty telemetry")
-        return []
-        
-    try:
-        dynamodb = boto3.resource('dynamodb', region_name=config.AWS_REGION)
-        table = dynamodb.Table('SensorData')
-        
-        if station_id:
-            # Query by station partition key, sorting descending by timestamp
-            response = table.query(
-                KeyConditionExpression=Key('station_id').eq(station_id),
-                ScanIndexForward=False,
-                Limit=limit
-            )
-            items = response.get('Items', [])
+# AWS Configuration
+AWS_REGION = "us-east-1"
+TABLE_NAME = "PowerGridTelemetry"
+
+# Connect to DynamoDB
+dynamodb = boto3.resource(
+    "dynamodb",
+    region_name=AWS_REGION
+)
+
+table = dynamodb.Table(TABLE_NAME)
+
+
+def convert(item):
+    """Convert DynamoDB Decimal types to Python int/float for JSON serialization."""
+    new = {}
+
+    for k, v in item.items():
+
+        if isinstance(v, Decimal):
+
+            if v % 1 == 0:
+                new[k] = int(v)
+            else:
+                new[k] = float(v)
+
         else:
-            # For dashboard overview, perform a scan (or query all stations)
-            # In a small grid, scanning recent data is sufficient for student demo
-            response = table.scan(Limit=limit * 5)
-            items = response.get('Items', [])
-            # Sort items by timestamp descending
-            items = sorted(items, key=lambda x: x['timestamp'], reverse=True)
-            
-        # Convert Decimal values back to float/int for JSON serialization
-        formatted_data = []
-        for item in items:
-            formatted_data.append({
-                "station_id": item["station_id"],
-                "voltage": float(item.get("voltage", 0)),
-                "current": float(item.get("current", 0)),
-                "frequency": float(item.get("frequency", 0)),
-                "temperature": float(item.get("temperature", 0)),
-                "load": float(item.get("load", 0)),
-                "status": item.get("status", "NORMAL"),
-                "timestamp": item["timestamp"]
-            })
-        return formatted_data
-    except Exception as e:
-        print(f"AWS DynamoDB error: {e}")
-        return []
+            new[k] = v
 
-def fetch_aws_alerts(limit=50):
-    """Queries AWS DynamoDB for fault logs."""
-    if boto3 is None:
-        return []
+    return new
+
+
+def fetch_latest(limit=50):
+    """Scan DynamoDB table and return the most recent records sorted by timestamp."""
     try:
-        dynamodb = boto3.resource('dynamodb', region_name=config.AWS_REGION)
-        table = dynamodb.Table('FaultLogs')
-        response = table.scan(Limit=limit)
-        items = response.get('Items', [])
-        items = sorted(items, key=lambda x: x['timestamp'], reverse=True)
-        return items
+        response = table.scan()
+        items = response.get("Items", [])
+        print(f"[DYNAMODB LOG] Scanned {len(items)} items from table '{TABLE_NAME}'.")
+
+        # Sort newest first
+        items.sort(
+            key=lambda x: x.get("timestamp", ""),
+            reverse=True
+        )
+
+        items = items[:limit]
+        return [convert(i) for i in items]
     except Exception as e:
-        print(f"AWS DynamoDB alert error: {e}")
+        print(f"[DYNAMODB ERROR] Failed to fetch data from DynamoDB: {e}")
         return []
 
+
 # ====================================================
-# WEB PAGES ROUTES (Frontend View Controllers)
+# PAGE ROUTES
 # ====================================================
 
-@app.route('/')
+@app.route("/")
 def dashboard():
-    """Renders main dashboard overview page."""
-    return render_template('dashboard.html', active_page='dashboard')
+    """Main dashboard overview page."""
+    return render_template("dashboard.html", active_page="dashboard")
 
-@app.route('/stations')
+
+@app.route("/stations")
 def stations():
-    """Renders details page for power substations."""
-    selected_id = request.args.get('station_id', 'PS001')
+    """Per-station detail page."""
+    selected_id = request.args.get("station_id", "PS001")
+    all_stations = ["PS001", "PS002", "PS003", "PS004", "PS005"]
     return render_template(
-        'station.html', 
-        active_page='stations', 
-        station_id=selected_id, 
-        all_stations=config.RULES.get('stations', ["PS001", "PS002", "PS003", "PS004", "PS005"])
+        "station.html",
+        active_page="stations",
+        station_id=selected_id,
+        all_stations=all_stations
     )
 
-@app.route('/alerts')
+
+@app.route("/alerts")
 def alerts():
-    """Renders alert logs history page."""
-    return render_template('dashboard.html', active_page='alerts')
+    """Fault history page."""
+    return render_template("dashboard.html", active_page="alerts")
+
 
 # ====================================================
-# BACKEND JSON APIs (Called by static/js/dashboard.js)
+# JSON API ROUTES (called by dashboard.js every 5s)
 # ====================================================
 
-@app.route('/api/telemetry', methods=['GET'])
-def api_telemetry():
-    """Returns telemetry data array for dashboard visualisations."""
-    station_id = request.args.get('station_id')
-    limit = int(request.args.get('limit', 10))
-    
-    data = fetch_aws_telemetry(limit, station_id)
+@app.route("/api/telemetry")
+def telemetry():
+    """Returns latest telemetry records, optionally filtered by station_id."""
+    station = request.args.get("station_id")
+
+    data = fetch_latest(100)
+
+    if station:
+        data = [
+            x for x in data
+            if x["station_id"] == station
+        ]
+
     return jsonify(data)
 
-@app.route('/api/alerts', methods=['GET'])
-def api_alerts():
-    """Returns fault log array for lists/tables."""
-    limit = int(request.args.get('limit', 50))
-    
-    data = fetch_aws_alerts(limit)
-    return jsonify(data)
 
-@app.route('/api/grid_status', methods=['GET'])
-def api_grid_status():
-    """Aggregates latest status for each station to show summary counts."""
-    telemetry = fetch_aws_telemetry(limit=30)
-        
-    # Get the latest reading for each station ID
-    latest_readings = {}
-    for read in telemetry:
-        sid = read['station_id']
-        if sid not in latest_readings:
-            latest_readings[sid] = read
-            
-    # Calculate counters
-    total_stations = 5  # PS001 to PS005
-    healthy_count = 0
-    warning_count = 0
-    critical_count = 0
-    
-    for sid in ["PS001", "PS002", "PS003", "PS004", "PS005"]:
-        if sid in latest_readings:
-            status = latest_readings[sid]['status']
-            if status == "NORMAL":
-                healthy_count += 1
-            elif status in ["Warning", "LOW_VOLTAGE", "HIGH_VOLTAGE", "OVER_CURRENT", "UNDER_FREQUENCY", "OVERHEATING", "OVERLOAD"]:
-                warning_count += 1
-            else:
-                critical_count += 1
+@app.route("/api/grid_status")
+def status():
+    """Returns per-station latest status and summary counts."""
+    data = fetch_latest(100)
+
+    # Get the most recent reading for each station
+    latest = {}
+
+    for row in data:
+
+        sid = row["station_id"]
+
+        if sid not in latest:
+            latest[sid] = row
+
+    # Count station health states
+    healthy = 0
+    warning = 0
+    critical = 0
+
+    for station in latest.values():
+
+        if station["status"] == "NORMAL":
+            healthy += 1
         else:
-            # No reading yet, default to healthy or offline (let's assume healthy for display setup)
-            healthy_count += 1
-            
+            warning += 1
+
     return jsonify({
-        "total_stations": total_stations,
-        "healthy": healthy_count,
-        "warning": warning_count,
-        "critical": critical_count,
-        "latest_readings": latest_readings
+        "total_stations": len(latest),
+        "healthy": healthy,
+        "warning": warning,
+        "critical": critical,
+        "latest_readings": latest
     })
 
-if __name__ == '__main__':
-    print("Starting Flask Web Dashboard on http://localhost:5000")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+@app.route("/api/alerts")
+def api_alerts():
+    """Returns all non-NORMAL readings as the fault/alert list."""
+    data = fetch_latest(200)
+
+    alerts = []
+
+    for row in data:
+
+        if row["status"] != "NORMAL":
+            alerts.append(row)
+
+    return jsonify(alerts)
+
+
+if __name__ == "__main__":
+
+    print("Dashboard running on http://0.0.0.0:5000")
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
+    )

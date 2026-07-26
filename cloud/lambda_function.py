@@ -7,8 +7,8 @@ from decimal import Decimal
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb')
 
-# Read AWS resource locations from Environment Variables
-SENSOR_TABLE_NAME = os.environ.get('SENSOR_TABLE', 'SensorData')
+# Table names - set via Lambda environment variables or defaults here
+SENSOR_TABLE_NAME = os.environ.get('SENSOR_TABLE', 'PowerGridTelemetry')
 FAULT_TABLE_NAME = os.environ.get('FAULT_TABLE', 'FaultLogs')
 
 def to_decimal(val):

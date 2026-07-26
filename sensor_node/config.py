@@ -1,7 +1,7 @@
 # config.py - Configuration settings for the Sensor Simulator Node
 
 # MQTT Broker configuration
-MQTT_BROKER = "localhost"
+MQTT_BROKER = "54.81.197.247"
 MQTT_PORT = 1883
 MQTT_TOPIC = "power/grid/data"
 PUBLISH_INTERVAL = 5  # seconds between sensor readings

@@ -1,7 +1,8 @@
 # config.py - Configuration settings for the Fog Node
 
 # MQTT Broker configuration
-MQTT_BROKER = "18.212.145.29"
+# Point this to the EC2 instance running Mosquitto
+MQTT_BROKER = "54.81.197.247"
 MQTT_PORT = 1883
 MQTT_TOPIC = "power/grid/data"
 

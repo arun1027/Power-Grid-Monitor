@@ -62,15 +62,20 @@ def log_alert_locally(data, faults):
         print(f"[FOG STORAGE ERROR] Failed to log alert locally: {e}")
 
 def on_connect(client, userdata, flags, rc):
-    """Callback when the subscriber successfully connects to the MQTT broker."""
     if rc == 0:
         print(f"Connected to Mosquitto MQTT Broker. Subscribing to topic: '{config.MQTT_TOPIC}'...")
-        client.subscribe(config.MQTT_TOPIC)
+        result, mid = client.subscribe(config.MQTT_TOPIC)
+        print(f"[DEBUG] Subscribe result={result}, mid={mid}")
     else:
         print(f"Connection to MQTT Broker failed with code {rc}")
 
+def on_disconnect(client, userdata, rc):
+    """Callback when the subscriber disconnects from the MQTT broker."""
+    print(f"Disconnected from MQTT Broker. Return code: {rc}")
+
 def on_message(client, userdata, msg):
     """Callback when a message is received on the subscribed MQTT topic."""
+    print("[DEBUG] MQTT message received")
     payload_str = msg.payload.decode('utf-8')
     
     # Run the filtering process: Validate JSON -> Check Missing Fields -> Deduplicate
@@ -119,6 +124,7 @@ def start_subscriber():
     client = mqtt.Client("PowerGridFogNode")
     client.on_connect = on_connect
     client.on_message = on_message
+    client.on_disconnect = on_disconnect
 
     print(f"Starting Fog Node MQTT Subscriber...")
     print(f"Connecting to broker at {config.MQTT_BROKER}:{config.MQTT_PORT}...")
