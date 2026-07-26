@@ -1,9 +1,10 @@
 # config.py - Configuration settings for the Fog Node
 
 # MQTT Broker configuration
-MQTT_BROKER = "localhost"
+MQTT_BROKER = "18.212.145.29"
 MQTT_PORT = 1883
 MQTT_TOPIC = "power/grid/data"
+
 
 # Local Edge Storage (for local alerts and edge resiliency)
 # We will use a local SQLite database file to log alerts at the edge.
@@ -15,7 +16,7 @@ FOG_HOST = "0.0.0.0"
 FOG_PORT = 5001
 
 # AWS IoT Core Configuration
-AWS_IOT_ENDPOINT = "your-iot-endpoint.iot.us-east-1.amazonaws.com"
+AWS_IOT_ENDPOINT = "aojrwb4mjzc6m-ats.iot.us-east-1.amazonaws.com"
 AWS_IOT_TOPIC = "powergrid/data"
 AWS_REGION = "us-east-1"
 
