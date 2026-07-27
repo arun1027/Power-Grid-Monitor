@@ -3,14 +3,23 @@
 // Global Chart References
 let charts = {};
 
-// Color configurations for the 5 Substations
-const stationColors = {
-    "PS001": { border: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" },
-    "PS002": { border: "#10b981", bg: "rgba(16, 185, 129, 0.1)" },
-    "PS003": { border: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)" },
-    "PS004": { border: "#8b5cf6", bg: "rgba(139, 92, 246, 0.1)" },
-    "PS005": { border: "#ec4899", bg: "rgba(236, 72, 153, 0.1)" }
-};
+// Default color palette used when station IDs are discovered dynamically
+const defaultPalette = [
+    { border: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" },
+    { border: "#10b981", bg: "rgba(16, 185, 129, 0.1)" },
+    { border: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)" },
+    { border: "#8b5cf6", bg: "rgba(139, 92, 246, 0.1)" },
+    { border: "#ec4899", bg: "rgba(236, 72, 153, 0.1)" },
+    { border: "#06b6d4", bg: "rgba(6, 182, 212, 0.08)" },
+    { border: "#f97316", bg: "rgba(249, 115, 22, 0.08)" }
+];
+
+// Helper: deterministically pick a color for a station id
+function colorForStation(stationId, index) {
+    // Simple rotation through palette for predictable but distinct colors
+    const pick = defaultPalette[index % defaultPalette.length];
+    return pick;
+}
 
 // Main Entry Point
 document.addEventListener("DOMContentLoaded", () => {
@@ -49,56 +58,72 @@ function getStatusBadge(status) {
 // ============================================================================
 
 function initOverviewDashboard() {
-    // 1. Initialize empty Chart.js instances
-    const chartConfigs = ["voltage", "current", "frequency", "temperature", "load"];
-    
-    chartConfigs.forEach(metric => {
-        const ctx = document.getElementById(`chart-${metric}`).getContext('2d');
-        
-        // Setup dataset configurations for each of the 5 stations
-        const datasets = Object.keys(stationColors).map(stationId => ({
-            label: stationId,
-            borderColor: stationColors[stationId].border,
-            backgroundColor: stationColors[stationId].bg,
-            data: [],
-            fill: false,
-            tension: 0.2,
-            borderWidth: 2,
-            pointRadius: 2
-        }));
-
-        charts[metric] = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [], // Will hold timestamps
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        display: true,
-                        grid: { display: false }
-                    },
-                    y: {
-                        display: true,
-                        grid: { color: "#e2e8f0" }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { boxWidth: 10, font: { size: 10 } }
-                    }
-                }
+    // Build charts dynamically based on stations returned by the API.
+    // This prevents mismatches when new stations are added or removed.
+    fetch('/api/grid_status')
+        .then(r => r.json())
+        .then(status => {
+            // Detect station IDs from the latest_readings map returned by the API
+            let stationIds = Object.keys(status.latest_readings || {});
+            if (stationIds.length === 0) {
+                // Fallback to a small default set if API returned no stations
+                stationIds = ['PS001', 'PS002', 'PS003', 'PS004', 'PS005'];
             }
-        });
-    });
 
-    // 2. Initial data fetch and starting the 5s timer
-    updateOverviewData();
-    setInterval(updateOverviewData, 5000);
+            const chartConfigs = ["voltage", "current", "frequency", "temperature", "load"];
+
+            chartConfigs.forEach(metric => {
+                const ctx = document.getElementById(`chart-${metric}`).getContext('2d');
+
+                const datasets = stationIds.map((stationId, idx) => {
+                    const col = colorForStation(stationId, idx);
+                    return {
+                        label: stationId,
+                        borderColor: col.border,
+                        backgroundColor: col.bg,
+                        data: [],
+                        fill: false,
+                        tension: 0.2,
+                        borderWidth: 2,
+                        pointRadius: 2
+                    };
+                });
+
+                charts[metric] = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: [], datasets: datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { display: true, grid: { display: false } },
+                            y: { display: true, grid: { color: "#e2e8f0" } }
+                        },
+                        plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10 } } } }
+                    }
+                });
+            });
+
+            // Start periodic updates after charts are initialized
+            updateOverviewData();
+            setInterval(updateOverviewData, 5000);
+        })
+        .catch(err => {
+            console.error('Failed to detect station IDs from API:', err);
+            // Fallback: create charts with the default palette labels
+            const fallbackIds = ['PS001','PS002','PS003','PS004','PS005'];
+            const chartConfigs = ["voltage", "current", "frequency", "temperature", "load"];
+            chartConfigs.forEach(metric => {
+                const ctx = document.getElementById(`chart-${metric}`).getContext('2d');
+                const datasets = fallbackIds.map((sid, idx) => {
+                    const col = colorForStation(sid, idx);
+                    return { label: sid, borderColor: col.border, backgroundColor: col.bg, data: [], fill: false, tension: 0.2, borderWidth: 2, pointRadius: 2 };
+                });
+                charts[metric] = new Chart(ctx, { type: 'line', data: { labels: [], datasets }, options: { responsive:true, maintainAspectRatio:false } });
+            });
+            updateOverviewData();
+            setInterval(updateOverviewData, 5000);
+        });
 }
 
 function updateOverviewData() {
@@ -114,13 +139,17 @@ function updateOverviewData() {
             // Populate quicklist of stations on the side
             const quicklist = document.getElementById("stations-quicklist");
             quicklist.innerHTML = "";
-            
-            Object.keys(stationColors).forEach(sid => {
-                const read = status.latest_readings[sid];
+            // Prefer the station list currently used to build the charts (if initialized)
+            const stationIds = (charts && charts['voltage'] && charts['voltage'].data && charts['voltage'].data.datasets)
+                ? charts['voltage'].data.datasets.map(d => d.label)
+                : Object.keys(status.latest_readings || {});
+
+            stationIds.forEach(sid => {
+                const read = status.latest_readings ? status.latest_readings[sid] : null;
                 const activeStatus = read ? read.status : "NORMAL";
                 const temp = read ? `${read.temperature}°C` : "N/A";
                 const load = read ? `${read.load}%` : "N/A";
-                
+
                 const item = document.createElement("li");
                 item.className = "list-group-item d-flex justify-content-between align-items-center py-3 border-0 border-bottom";
                 item.innerHTML = `
@@ -141,7 +170,11 @@ function updateOverviewData() {
         .then(telemetryData => {
             // Group records by station ID (API already sorted ascending)
             const grouped = {};
-            Object.keys(stationColors).forEach(sid => {
+            const stationIds = (charts && charts['voltage'] && charts['voltage'].data && charts['voltage'].data.datasets)
+                ? charts['voltage'].data.datasets.map(d => d.label)
+                : [];
+
+            stationIds.forEach(sid => {
                 grouped[sid] = telemetryData.filter(d => d.station_id === sid).slice(-10);
             });
 
