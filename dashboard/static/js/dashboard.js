@@ -25,17 +25,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-// Helper to format ISO timestamp to readable locale format
+// Helper to format ISO timestamp to readable GMT+1 locale format
 function formatTime(isoString) {
     const date = new Date(isoString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    // Force GMT+1 display regardless of client locale
+    return date.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/Berlin'
+    });
 }
 
 // Helper to construct a semantic status HTML badge
 function getStatusBadge(status) {
     if (status === "NORMAL") return `<span class="badge badge-healthy"><i class="fa-solid fa-circle-check me-1"></i>NORMAL</span>`;
-    if (status === "Warning") return `<span class="badge badge-warning"><i class="fa-solid fa-triangle-exclamation me-1"></i>Warning</span>`;
-    return `<span class="badge badge-critical"><i class="fa-solid fa-circle-exclamation me-1"></i>Critical</span>`;
+    // Multiple faults = critical (comma-separated), single fault = warning
+    if (status && status.includes(",")) return `<span class="badge badge-critical"><i class="fa-solid fa-circle-exclamation me-1"></i>${status}</span>`;
+    return `<span class="badge badge-warning"><i class="fa-solid fa-triangle-exclamation me-1"></i>${status || 'Warning'}</span>`;
 }
 
 // ============================================================================
@@ -128,51 +136,52 @@ function updateOverviewData() {
             });
         })
         .catch(err => console.error("Error fetching grid status summary:", err));
-
     // B. Fetch Telemetry History and Redraw Charts
-    fetch('/api/telemetry?limit=50')
+    // API now returns ascending order (oldest -> newest) for correct left-to-right rendering
+    fetch('/api/telemetry?limit=50&order=asc')
         .then(response => response.json())
         .then(telemetryData => {
-            // Reverse array so records are in chronological order (oldest to newest)
-            const chronologicalData = [...telemetryData].reverse();
-            
-            // Group records by station ID
+            // Group records by station ID (API already sorted ascending)
             const grouped = {};
             Object.keys(stationColors).forEach(sid => {
-                grouped[sid] = chronologicalData.filter(d => d.station_id === sid).slice(-10);
+                grouped[sid] = telemetryData.filter(d => d.station_id === sid).slice(-10);
             });
 
-            // Find the station with the most timestamps to use as X-axis labels
-            let maxStation = Object.keys(grouped).reduce((a, b) => grouped[a].length >= grouped[b].length ? a : b, "PS001");
-            const timeLabels = (grouped[maxStation] || []).map(r => formatTime(r.timestamp));
-
             const metrics = ["voltage", "current", "frequency", "temperature", "load"];
-            
+
             metrics.forEach(metric => {
                 const chart = charts[metric];
                 if (!chart) return;
-                
-                chart.data.labels = timeLabels;
-                
-                // Update datasets for each station
+
+                // Build x/y point objects using timestamp as x-axis and metric value as y-axis
+                // This is the correct Chart.js format for time-series data
                 chart.data.datasets.forEach(dataset => {
                     const stationId = dataset.label;
                     const stationRecords = grouped[stationId] || [];
-                    dataset.data = stationRecords.map(r => r[metric]);
+                    dataset.data = stationRecords.map(r => ({
+                        x: formatTime(r.timestamp),
+                        y: r[metric]
+                    }));
                 });
-                
-                chart.update('none'); // Update without full transitions for smooth performance
+
+                // Use labels from the station with the most data points
+                const maxStation = Object.keys(grouped).reduce(
+                    (a, b) => grouped[a].length >= grouped[b].length ? a : b, "PS001"
+                );
+                chart.data.labels = (grouped[maxStation] || []).map(r => formatTime(r.timestamp));
+
+                chart.update('none');
             });
         })
-        .catch(err => console.error("Error fetching telemetry logs:", err));
+        .catch(err => console.error("Error fetching telemetry logs:", err));;
 
-    // C. Update Recent Alerts Table
-    fetch('/api/alerts?limit=5')
+    // C. Update Recent Alerts Table — reads from status field, not faults array
+    fetch('/api/alerts?limit=10')
         .then(response => response.json())
         .then(alerts => {
             const tableBody = document.getElementById("table-alerts-body");
             tableBody.innerHTML = "";
-            
+
             if (alerts.length === 0) {
                 tableBody.innerHTML = `
                     <tr>
@@ -183,11 +192,14 @@ function updateOverviewData() {
                 `;
                 return;
             }
-            
+
             alerts.forEach(alert => {
-                const badgeClass = alert.faults.length > 1 ? "bg-danger" : "bg-warning";
-                const badges = alert.faults.map(f => `<span class="badge ${badgeClass} me-1">${f}</span>`).join(" ");
-                
+                // Build fault badges from the status string (e.g. "HIGH_VOLTAGE,OVERHEATING")
+                const statusStr = alert.status || "FAULT";
+                const faultList = statusStr.split(",").map(f => f.trim()).filter(f => f && f !== "NORMAL");
+                const badgeClass = faultList.length > 1 ? "bg-danger" : "bg-warning text-dark";
+                const badges = faultList.map(f => `<span class="badge ${badgeClass} me-1">${f}</span>`).join(" ");
+
                 const row = document.createElement("tr");
                 row.innerHTML = `
                     <td class="ps-4 fw-bold">${alert.station_id}</td>
@@ -303,7 +315,7 @@ function initStationDetails() {
 }
 
 function updateStationDetailsData(stationId, limits) {
-    fetch(`/api/telemetry?station_id=${stationId}&limit=12`)
+    fetch(`/api/telemetry?station_id=${stationId}&limit=12&order=desc`)
         .then(response => response.json())
         .then(history => {
             if (history.length === 0) return;

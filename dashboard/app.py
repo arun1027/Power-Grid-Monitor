@@ -26,34 +26,51 @@ def convert(item):
     new = {}
 
     for k, v in item.items():
-
         if isinstance(v, Decimal):
-
             if v % 1 == 0:
                 new[k] = int(v)
             else:
                 new[k] = float(v)
-
         else:
             new[k] = v
 
     return new
 
 
-def fetch_latest(limit=50):
-    """Scan DynamoDB table and return the most recent records sorted by timestamp."""
+def scan_table_items():
+    """Scan DynamoDB table fully with pagination."""
+    items = []
     try:
         response = table.scan()
-        items = response.get("Items", [])
-        print(f"[DYNAMODB LOG] Scanned {len(items)} items from table '{TABLE_NAME}'.")
+        items.extend(response.get("Items", []))
+        while response.get("LastEvaluatedKey"):
+            response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+    except Exception as e:
+        print(f"[DYNAMODB ERROR] Failed to scan table '{TABLE_NAME}': {e}")
+        raise
+    return items
 
-        # Sort newest first
-        items.sort(
-            key=lambda x: x.get("timestamp", ""),
-            reverse=True
-        )
 
-        items = items[:limit]
+def fetch_latest(limit=50, order="asc", station=None):
+    """Scan DynamoDB table and return the most recent records sorted by timestamp."""
+    try:
+        items = scan_table_items()
+        original_count = len(items)
+
+        if station:
+            items = [item for item in items if item.get("station_id") == station]
+
+        print(f"[DYNAMODB LOG] Scanned {original_count} items from table '{TABLE_NAME}' and filtered to {len(items)} for station={station}.")
+
+        reverse = order.lower() == "desc"
+        items.sort(key=lambda x: x.get("timestamp", ""), reverse=reverse)
+
+        if reverse:
+            items = items[:limit]
+        else:
+            items = items[-limit:]
+
         return [convert(i) for i in items]
     except Exception as e:
         print(f"[DYNAMODB ERROR] Failed to fetch data from DynamoDB: {e}")
@@ -97,15 +114,12 @@ def alerts():
 def telemetry():
     """Returns latest telemetry records, optionally filtered by station_id."""
     station = request.args.get("station_id")
+    limit = request.args.get("limit", default=100, type=int)
+    order = request.args.get("order", default="asc", type=str).lower()
+    if order not in ("asc", "desc"):
+        order = "asc"
 
-    data = fetch_latest(100)
-
-    if station:
-        data = [
-            x for x in data
-            if x["station_id"] == station
-        ]
-
+    data = fetch_latest(limit=limit, order=order, station=station)
     return jsonify(data)
 
 
@@ -114,26 +128,33 @@ def status():
     """Returns per-station latest status and summary counts."""
     data = fetch_latest(100)
 
-    # Get the most recent reading for each station
+    # Get the MOST RECENT reading for each station.
+    # data is sorted ascending (oldest first), so we overwrite repeatedly
+    # to end up with the LAST (newest) reading per station.
     latest = {}
 
     for row in data:
 
         sid = row["station_id"]
+        latest[sid] = row   # always overwrite — last write = newest record
 
-        if sid not in latest:
-            latest[sid] = row
-
-    # Count station health states
+    # Count station health states by reading the status field directly
+    # status == "NORMAL" -> healthy
+    # status contains one fault -> warning
+    # status contains multiple faults (comma-separated) -> critical
     healthy = 0
     warning = 0
     critical = 0
 
     for station in latest.values():
-
-        if station["status"] == "NORMAL":
+        s = station.get("status", "NORMAL")
+        if s == "NORMAL":
             healthy += 1
+        elif "," in s:
+            # Multiple faults = critical
+            critical += 1
         else:
+            # Single fault = warning
             warning += 1
 
     return jsonify({
@@ -148,15 +169,10 @@ def status():
 @app.route("/api/alerts")
 def api_alerts():
     """Returns all non-NORMAL readings as the fault/alert list."""
-    data = fetch_latest(200)
+    limit = request.args.get("limit", default=200, type=int)
+    data = fetch_latest(limit=limit, order="desc")
 
-    alerts = []
-
-    for row in data:
-
-        if row["status"] != "NORMAL":
-            alerts.append(row)
-
+    alerts = [row for row in data if row.get("status") != "NORMAL"]
     return jsonify(alerts)
 
 

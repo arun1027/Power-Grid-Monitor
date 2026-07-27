@@ -1,7 +1,7 @@
 # sensors.py - Sensor Simulator for Power Stations
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from config import SENSOR_RANGES
 
 def generate_sensor_data(station_id, inject_fault=False):
@@ -43,7 +43,7 @@ def generate_sensor_data(station_id, inject_fault=False):
         "frequency": frequency,
         "temperature": temperature,
         "load": load,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
     }
     
     return data
