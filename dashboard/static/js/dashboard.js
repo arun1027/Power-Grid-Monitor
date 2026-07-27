@@ -20,8 +20,6 @@ document.addEventListener("DOMContentLoaded", () => {
         initOverviewDashboard();
     } else if (view === "station_details") {
         initStationDetails();
-    } else if (view === "alerts") {
-        initAlertHistory();
     }
 });
 

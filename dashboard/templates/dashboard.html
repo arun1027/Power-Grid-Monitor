@@ -203,48 +203,6 @@
     </div>
 </div>
 
-{% elif active_page == 'alerts' %}
-<!-- ========================================== -->
-<!-- ALERT HISTORY VIEW                         -->
-<!-- ========================================== -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h3 class="fw-bold mb-0">
-                <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>Fault Alerts Logs History
-            </h3>
-            <button class="btn btn-outline-secondary btn-sm" id="btn-refresh-alerts">
-                <i class="fa-solid fa-rotate me-1"></i>Refresh Logs
-            </button>
-        </div>
-        
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover table-striped mb-0 align-middle">
-                        <thead class="table-dark">
-                            <tr>
-                                <th class="ps-4">Timestamp</th>
-                                <th>Station ID</th>
-                                <th>Anomaly Detected</th>
-                                <th class="pe-4 text-end">Database Source</th>
-                            </tr>
-                        </thead>
-                        <tbody id="table-full-history-body">
-                            <!-- Populated dynamically via JS -->
-                            <tr>
-                                <td colspan="4" class="text-center py-5 text-muted">
-                                    <i class="fa-solid fa-spinner fa-spin fa-2x mb-3 d-block"></i>
-                                    Loading historical fault records from database...
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endif %}
 
 <!-- Initialize correct script routine inside dashboard.js -->

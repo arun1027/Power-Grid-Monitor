@@ -12,6 +12,10 @@ app = Flask(__name__)
 AWS_REGION = "us-east-1"
 TABLE_NAME = "PowerGridTelemetry"
 
+
+def get_app_port() -> int:
+    return int(os.getenv("PORT", "8000"))
+
 # Connect to DynamoDB
 dynamodb = boto3.resource(
     "dynamodb",
@@ -100,12 +104,6 @@ def stations():
     )
 
 
-@app.route("/alerts")
-def alerts():
-    """Fault history page."""
-    return render_template("dashboard.html", active_page="alerts")
-
-
 # ====================================================
 # JSON API ROUTES (called by dashboard.js every 5s)
 # ====================================================
@@ -178,10 +176,10 @@ def api_alerts():
 
 if __name__ == "__main__":
 
-    print("Dashboard running on http://0.0.0.0:5000")
+    print(f"Dashboard running on http://0.0.0.0:{get_app_port()}")
 
     app.run(
         host="0.0.0.0",
-        port=5000,
+        port=get_app_port(),
         debug=True
     )
