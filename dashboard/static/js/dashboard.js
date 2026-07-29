@@ -34,14 +34,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Helper to format ISO timestamp to readable GMT+1 locale format
 function formatTime(isoString) {
-    const date = new Date(isoString);
-    // Force GMT+1 display regardless of client locale
+    if (!isoString && isoString !== 0) {
+        return "";
+    }
+
+    const raw = typeof isoString === "string" ? isoString.trim() : String(isoString);
+    const normalized = raw
+        .replace(/ /g, "T")
+        .replace(/(\+00:00)?Z?$/, "Z")
+        .replace(/\+00:00Z$/, "Z");
+    const date = new Date(normalized);
+
+    if (Number.isNaN(date.valueOf())) {
+        // Fall back to the raw value instead of showing Invalid Date
+        return raw;
+    }
+
     return date.toLocaleTimeString('en-GB', {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-        hour12: false,
-        timeZone: 'Europe/Berlin'
+        hour12: false
     });
 }
 
@@ -57,6 +70,8 @@ function getStatusBadge(status) {
 // 1. OVERVIEW DASHBOARD ROUTINES
 // ============================================================================
 
+const KNOWN_STATION_IDS = ['PS001', 'PS002', 'PS003', 'PS004', 'PS005'];
+
 function initOverviewDashboard() {
     // Build charts dynamically based on stations returned by the API.
     // This prevents mismatches when new stations are added or removed.
@@ -65,9 +80,10 @@ function initOverviewDashboard() {
         .then(status => {
             // Detect station IDs from the latest_readings map returned by the API
             let stationIds = Object.keys(status.latest_readings || {});
+            stationIds = stationIds.filter(id => KNOWN_STATION_IDS.includes(id));
             if (stationIds.length === 0) {
                 // Fallback to a small default set if API returned no stations
-                stationIds = ['PS001', 'PS002', 'PS003', 'PS004', 'PS005'];
+                stationIds = KNOWN_STATION_IDS.slice();
             }
 
             const chartConfigs = ["voltage", "current", "frequency", "temperature", "load"];
@@ -131,6 +147,7 @@ function updateOverviewData() {
     fetch('/api/grid_status')
         .then(response => response.json())
         .then(status => {
+            console.debug('GRID_STATUS', status);
             document.getElementById("stat-total").innerText = status.total_stations;
             document.getElementById("stat-healthy").innerText = status.healthy;
             document.getElementById("stat-warning").innerText = status.warning;
@@ -184,22 +201,22 @@ function updateOverviewData() {
                 const chart = charts[metric];
                 if (!chart) return;
 
-                // Build x/y point objects using timestamp as x-axis and metric value as y-axis
-                // This is the correct Chart.js format for time-series data
                 chart.data.datasets.forEach(dataset => {
                     const stationId = dataset.label;
                     const stationRecords = grouped[stationId] || [];
-                    dataset.data = stationRecords.map(r => ({
-                        x: formatTime(r.timestamp),
-                        y: r[metric]
-                    }));
+                    dataset.data = stationRecords.map(r => r[metric] || 0);
                 });
 
-                // Use labels from the station with the most data points
-                const maxStation = Object.keys(grouped).reduce(
-                    (a, b) => grouped[a].length >= grouped[b].length ? a : b, "PS001"
-                );
+                const maxStation = Object.keys(grouped).reduce((a, b) => {
+                    const lenA = grouped[a] ? grouped[a].length : 0;
+                    const lenB = grouped[b] ? grouped[b].length : 0;
+                    return lenA >= lenB ? a : b;
+                }, KNOWN_STATION_IDS[0]);
+
                 chart.data.labels = (grouped[maxStation] || []).map(r => formatTime(r.timestamp));
+                if (chart.data.labels.length === 0) {
+                    chart.data.labels = Array.from({ length: 10 }, (_, i) => `T-${10-i}`);
+                }
 
                 chart.update('none');
             });

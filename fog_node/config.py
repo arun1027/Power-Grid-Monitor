@@ -19,6 +19,9 @@ FOG_PORT = 5001
 AWS_IOT_ENDPOINT = "aojrwb4mjzc6m-ats.iot.us-east-1.amazonaws.com"
 AWS_IOT_TOPIC = "powergrid/data"
 AWS_REGION = "us-east-1"
+AWS_IOT_ENABLED = os.getenv("AWS_IOT_ENABLED", "true").lower() in ("1", "true", "yes")
+AWS_MOCK_MODE = os.getenv("AWS_MOCK_MODE", "false").lower() in ("1", "true", "yes")
+AWS_IOT_MQTT_PORT = int(os.getenv("AWS_IOT_MQTT_PORT", "8883"))
 
 # Certificate Paths
 ROOT_CA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "certs", "AmazonRootCA1.pem"))
